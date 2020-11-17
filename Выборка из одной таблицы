@@ -1,0 +1,85 @@
+"Задача: Выбрать из таблицы bkpf и вывести в виде отчета: BE - обязательный параметр, опция выбора по параметрам год (gjahr) и номер документа (belnr). 
+" Выбрать данные по заголовкам документов и по позициям. Сделать кнопку скрывающую\показывающую разные поля сортировки. Предзаполнить параметры опций экрана.
+" Убрать из отчета строки с пустыми значениями по полю bktxt. Вывести в стандартную ALV таблицу.
+
+REPORT Z_FI_DOC.
+
+INCLUDE Z_FI_DOC_TOP.
+INCLUDE Z_FI_DOC_SSC.
+INCLUDE Z_FI_DOC_EVT.
+____________________________
+"INCLUDE Z_FI_DOC_TOP
+
+DATA:
+gs_bkpf TYPE bkpf, "создаю в памяти структуру равную таблице bkpf
+
+gt_bkpf TYPE STANDARD TABLE OF bkpf.
+_________________________________
+
+"INCLUDE Z_FI_DOC_SSC
+
+PARAMETERS p_bukrs TYPE bkpf-bukrs DEFAULT '0100' OBLIGATORY. "создаю обязательный параметр Балансовая единица тип как в уже существующем поле bukrs в таблице bkpf
+SELECT-OPTIONS: "создаю опции выбора год и номер документа
+s_gjahr FOR gs_bkpf-gjahr NO-EXTENSION, "год тип которого мы объявили в топ инклуде без выбора отдельных но с интервалом
+s_belnr FOR gs_bkpf-belnr NO INTERVALS MODIF ID bln. "номер документа тип которого мы объявили в топ инклуде без интервала, но с выбором отдельных значений
+
+PARAMETERS:
+p_mode AS CHECKBOX USER-COMMAND usr. "Вводим галку которая активирует\скрывает разные поля
+
+INITIALIZATION. "первое событие запуска программы
+  s_belnr[] = VALUE #( ( sign = 'E' option = 'EQ' low = '0000000001' ) "предзаполнение параметров опций экрана
+                     ( sign = 'I' option = 'GE' low = '0000000002' )  ).
+
+
+AT SELECTION-SCREEN OUTPUT. "изменение свойств параметров экрана
+  LOOP AT SCREEN.
+    If screen-group1 = 'BLN' AND p_mode = 'X'. "свойства экрана изменяются при нажатии p_mode скрывается s_benlr(bln)
+      screen-active = 0.
+      MODIFY SCREEN.
+   Endif.
+  ENDLOOP.
+  ________________________________
+  
+  "INCLUDE Z_FI_DOC_EVT
+  
+  START-OF-SELECTION.
+
+  SELECT *
+    INTO TABLE gt_bkpf "куда мы все помещаем
+    FROM bkpf
+    WHERE gjahr IN s_gjahr " множественное значение
+    AND belnr IN s_belnr
+    AND bukrs = p_bukrs. " одно значение
+
+END-OF-SELECTION.
+
+
+"удалить поля с незаполненными данными по полю bktxt
+DELETE gt_bkpf WHERE bktxt IS INITIAL. "если наоборот хочу показать только те, где нет данных по этому полю то IS NOT INITIAL
+
+"Показываем таблицу пользователю
+cl_salv_table=>factory(  " у класса вызываем фабричный метод(возвращает объект alv сетки)
+
+  IMPORTING
+    r_salv_table   = DATA(go_alv)    " вернул объект
+  CHANGING
+    t_table        = gt_bkpf   "закидываю туда свою таблицу созданную выше
+).
+
+go_alv->display( ). "вызываю метод alv показать на экран
+
+
+________________________
+
+"Не по заданию. Если незаполненные строки по полю bktxt удалять не нужно, а только вывести ошибку, что такие строки есть, то можно написать так:
+
+*LOOP AT gt_bkpf ASSIGNING FIELD-SYMBOL(<s_bkpf>). "перекладываю данные из текущего шага в структуру
+*  IF <s_bkpf>-bktxt IS INITIAL. "если bkpf пустое
+*    MESSAGE 'значение текста документа пустое в документе №' && <s_bkpf>-belnr
+*    TYPE 'W' display like 'E'.
+*    RETURN.
+*  ENDIF.
+*
+*ENDLOOP.
+
+
